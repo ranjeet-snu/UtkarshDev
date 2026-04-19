@@ -1,0 +1,370 @@
+<template>
+    <div class="up-wrapper">
+
+        <!-- ── Main Content Grid (Desktop: 2-col, Mobile: stacked) ── -->
+        <div class="up-grid">
+
+            <!-- ═══ Left Column: Punch Controls ═══ -->
+            <div class="up-panel up-panel-main">
+
+                <!-- Profile Header -->
+                <div class="up-profile">
+                    <div class="up-avatar-ring">
+                        <div class="up-avatar-inner">
+                            <lightning-icon icon-name="standard:user" size="large"></lightning-icon>
+                        </div>
+                        <div class={statusRingClass}></div>
+                    </div>
+                    <div class="up-profile-text">
+                        <h1 class="up-name">{employeeName}</h1>
+                        <div class={statusBadgeClass}>
+                            <span class="up-status-dot"></span>
+                            {statusLabel}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loading spinner -->
+                <template if:true={loading}>
+                    <div class="up-loading">
+                        <lightning-spinner alternative-text="Loading..." size="medium"></lightning-spinner>
+                        <p>Loading your punch status…</p>
+                    </div>
+                </template>
+
+                <!-- Error -->
+                <template if:true={error}>
+                    <div class="up-error">
+                        <lightning-icon icon-name="utility:error" size="small"></lightning-icon>
+                        <span>{error}</span>
+                    </div>
+                </template>
+
+                <!-- State loaded -->
+                <template if:true={stateLoaded}>
+
+                    <!-- Stats Row -->
+                    <div class="up-stats-row">
+                        <div class="up-stat-card">
+                            <div class="up-stat-icon">
+                                <lightning-icon icon-name="utility:clock" size="x-small"></lightning-icon>
+                            </div>
+                            <div class="up-stat-body">
+                                <span class="up-stat-label">Last Punch</span>
+                                <span class="up-stat-value">
+                                    <template if:true={lastPunchDisplay}>{lastPunchDisplay}</template>
+                                    <template if:false={lastPunchDisplay}>No punches yet</template>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="up-stat-card">
+                            <div class="up-stat-icon up-stat-icon-battery">
+                                <lightning-icon icon-name="utility:battery_charging" size="x-small"></lightning-icon>
+                            </div>
+                            <div class="up-stat-body">
+                                <span class="up-stat-label">Battery</span>
+                                <span class="up-stat-value">
+                                    <template if:true={lastBatteryDisplay}>{lastBatteryDisplay}%</template>
+                                    <template if:false={lastBatteryDisplay}>—</template>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="up-stat-card">
+                            <div class="up-stat-icon up-stat-icon-loc">
+                                <lightning-icon icon-name="utility:checkin" size="x-small"></lightning-icon>
+                            </div>
+                            <div class="up-stat-body">
+                                <span class="up-stat-label">Location</span>
+                                <span class="up-stat-value">
+                                    <template if:true={lastLocationDisplay}>{lastLocationDisplay}</template>
+                                    <template if:false={lastLocationDisplay}>—</template>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Punch Categories -->
+                    <div class="up-section">
+                        <div class="up-section-header">
+                            <lightning-icon icon-name="utility:event" size="x-small"></lightning-icon>
+                            <span>Punch Category</span>
+                        </div>
+                        <div class="up-category-grid">
+                            <template if:true={isWFOApproved}>
+                                <!-- <button class={wfoClass} onclick={selectWFO}> -->
+                                    <button class={wfhClass} onclick={selectWFO} title={wfhButtonTitle}>
+                                    <lightning-icon icon-name="utility:company" size="small"></lightning-icon>
+                                    <span>WFO</span>
+                                </button>
+                            </template>
+                            <template if:false={isWFOApproved}>
+                                <button class="up-cat-btn up-cat-disabled" title="WFO not approved for today.">
+                                    <lightning-icon icon-name="utility:home" size="small"></lightning-icon>
+                                    <span>WFO</span>
+                                </button>
+                            </template>
+                            <template if:true={isWFHApprovedForToday}>
+                                <button class={wfhClass} onclick={selectWFH}  title={wfhButtonTitle}>
+                                    <lightning-icon icon-name="utility:home" size="small"></lightning-icon>
+                                    <span>WFH</span>
+                                    <!-- <template if:true={wfhButtonDisabled}>
+                                        <span class="up-btn-subtitle">(Outside window)</span>
+                                    </template> -->
+                                </button>
+                            </template>
+                            <template if:false={isWFHApprovedForToday}>
+                                <button class="up-cat-btn up-cat-disabled" title="WFH not approved for today.">
+                                    <lightning-icon icon-name="utility:home" size="small"></lightning-icon>
+                                    <span>WFH</span>
+                                </button>
+                            </template>
+                            <button class={marketVisitClass} onclick={selectMarketVisit}>
+                                <lightning-icon icon-name="utility:store" size="small"></lightning-icon>
+                                <span>Market Visit</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- WFH Request Section -->
+                    <template if:false={isPunchedIn}>
+                        <!-- <div class="up-section up-wfh-request-section"> -->
+                            <template if:true={showWFHRequestForm}>
+                                <div class="up-section up-wfh-request-section">
+                                    <div>
+                                        <lightning-combobox
+                                            disabled={hasWFHRequestTomorrow}
+                                            label="Choose a category"
+                                            value={selectedValue}
+                                            options={picklistValues}
+                                            onchange={handleChange}>
+                                        </lightning-combobox>
+                                    </div>
+                                    <br></br>
+                                    <div class="up-section-header">
+                                        <lightning-icon icon-name="utility:clock" size="x-small" variant="warning"></lightning-icon>
+                                        <span>Select Date and Time for {selectedValue}</span>
+                                    </div>
+                                    <div class="up-wfh-req-grid">
+                                        <div class="up-wfh-req-field">
+                                            <lightning-input type="Date" label="Select a Date" value={varReqDate} onchange={handleReqDateChange}></lightning-input>
+                                        </div>
+                                        <div class="up-wfh-req-field">
+                                            <lightning-input type="time" label="Start Time" value={wfhReqStart} onchange={handleWfhReqStartChange}></lightning-input>
+                                        </div>
+                                        <div class="up-wfh-req-field">
+                                            <lightning-input type="time" label="End Time" value={wfhReqEnd} onchange={handleWfhReqEndChange}></lightning-input>
+                                        </div>
+                                    </div>
+                                    <button class="up-btn-primary up-btn-wfh-req" onclick={handleWfhRequestSubmit} disabled={isSubmittingReq}>
+                                        <template if:true={isSubmittingReq}>
+                                            <lightning-spinner size="small" alternative-text="Submitting..."></lightning-spinner>
+                                        </template>
+                                        <span>Submit {selectedValue} Request</span>
+                                    </button>
+                                </div>
+                            </template>
+
+                            <template if:true={hasWFHRequestTomorrow}>
+                                <div class="up-section up-wfh-request-section">
+                                    <div class="up-wfh-status-msg">
+                                        <lightning-icon icon-name="utility:info" size="xx-small" variant="info" class="slds-m-right_x-small"></lightning-icon>
+                                        Current Status: <span class="up-status-highlight">{wfhRequestStatusTomorrow}</span>
+                                    </div>
+                                    <template if:true={isWFHRequestApprovedTomorrow}>
+                                        <div class="up-wfh-ready-msg">
+                                            You are all set for tomorrow!
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                    </template>
+
+                    <!-- WFH Flow -->
+                    <template if:true={isWFH}>
+                        <div class="up-section up-section-fade">
+                            <div class="up-section-header">
+                                <lightning-icon icon-name="utility:note" size="x-small"></lightning-icon>
+                                <span>Daily Activity Note (Min 50 chars)</span>
+                            </div>
+                            <lightning-textarea
+                                label="What are you working on today?"
+                                value={wfhActivity}
+                                onchange={handleWFHActivityChange}
+                                placeholder="Enter at least 50 characters..."
+                                class="up-textarea"
+                                variant="label-hidden">
+                            </lightning-textarea>
+                            <div class={charCountClass}>{wfhActivityLength}/50</div>
+                        </div>
+                    </template>
+
+                    <!-- Market Visit Flow -->
+                    <template if:true={isMarketVisit}>
+                        <div class="up-section up-section-fade">
+                            <div class="up-section-header">
+                                <lightning-icon icon-name="utility:travel_and_places" size="x-small"></lightning-icon>
+                                <span>Transportation</span>
+                            </div>
+                            <div class="up-transport-row">
+                                <button class={publicTransportClass} onclick={selectPublicTransport}>
+                                    <lightning-icon icon-name="utility:bus" size="xx-small"></lightning-icon>
+                                    Public
+                                </button>
+                                <button class={privateVehicleClass} onclick={selectPrivateVehicle}>
+                                    <lightning-icon icon-name="utility:car" size="xx-small"></lightning-icon>
+                                    Private
+                                </button>
+                            </div>
+
+                            <template if:true={isPrivateVehicle}>
+                                <div class="up-sub-section">
+                                    <span class="up-sub-label">Vehicle Type:</span>
+                                    <div class="up-vehicle-row">
+                                        <button class={twoWheelerClass} onclick={selectTwoWheeler}>Two-Wheeler</button>
+                                        <button class={fourWheelerClass} onclick={selectFourWheeler}>Four-Wheeler</button>
+                                    </div>
+                                </div>
+
+                                <div class="up-odometer-grid">
+                                    <div class="up-odometer-field">
+                                        <label>Extracted Reading</label>
+                                        <input type="text" value={extractedOdometer} readonly class="up-readonly-input" />
+                                    </div>
+                                    <div class="up-odometer-field">
+                                        <label>Manual Entry</label>
+                                        <lightning-input
+                                            type="number"
+                                            variant="label-hidden"
+                                            value={odometerReading}
+                                            onchange={handleOdometerChange}
+                                            class="up-number-input">
+                                        </lightning-input>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Captured Images / Viewfinders -->
+                    <div class="up-section up-capture-section">
+                        <div class="up-section-header">
+                            <lightning-icon icon-name="utility:photo" size="x-small"></lightning-icon>
+                            <span>Verification {captureStepLabel}</span>
+                        </div>
+                        
+                        <div class={captureGridClass}>
+                            <!-- Selfie Capture (Always required) -->
+                            <div class="up-camera-area">
+                                <div class="up-sub-label">Step 1: Selfie (Identitiy)</div>
+                                <div class="up-viewfinder">
+                                    <video autoplay playsinline class="up-video up-video-selfie"></video>
+                                    <canvas style="display:none;"></canvas>
+                                    <div class="up-viewfinder-corners"></div>
+                                </div>
+                                <template if:true={selfiePreview}>
+                                    <div class="up-preview-strip">
+                                        <img src={selfiePreview} class="up-preview-img" alt="Selfie Captured" />
+                                        <span class="up-preview-check">✓ Selfie Done</span>
+                                    </div>
+                                </template>
+                                <div class="up-camera-actions">
+                                    <button class="up-btn-capture" onclick={captureSelfie} title="Capture Selfie">
+                                        <div class="up-btn-capture-ring"></div>
+                                    </button>
+                                    <template if:true={selfiePreview}>
+                                        <button class="up-btn-retake" onclick={retakeSelfie}>
+                                            <lightning-icon icon-name="utility:refresh" size="x-small"></lightning-icon>
+                                            Retake
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Odometer Capture (Conditionally required) -->
+                            <template if:true={isPrivateVehicle}>
+                                <div class="up-camera-area up-section-fade">
+                                    <div class="up-sub-label">Step 2: Odometer (Vehicle)</div>
+                                    <div class="up-viewfinder">
+                                        <video autoplay playsinline class="up-video up-video-odometer"></video>
+                                        <div class="up-viewfinder-corners"></div>
+                                    </div>
+                                    <template if:true={odometerPreview}>
+                                        <div class="up-preview-strip">
+                                            <img src={odometerPreview} class="up-preview-img" alt="Odometer Captured" />
+                                            <span class="up-preview-check">✓ Odometer Done</span>
+                                        </div>
+                                    </template>
+                                    <div class="up-camera-actions">
+                                        <button class="up-btn-capture" onclick={captureOdometer} title="Capture Odometer">
+                                            <div class="up-btn-capture-ring"></div>
+                                        </button>
+                                        <template if:true={odometerPreview}>
+                                            <button class="up-btn-retake" onclick={retakeOdometer}>
+                                                <lightning-icon icon-name="utility:refresh" size="x-small"></lightning-icon>
+                                                Retake
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Image Modal -->
+                    <template if:true={showImageModal}>
+                        <section class="up-image-backdrop" onclick={closeImageModal}>
+                            <div class="up-image-modal" onclick={closeImageModal}>
+                                <div class="up-image-header">
+                                    <h2>Last Odometer Reading</h2>
+                                    <button class="up-close-btn" onclick={closeImageModal} title="Close">
+                                        <lightning-icon icon-name="utility:close" size="small" variant="inverse"></lightning-icon>
+                                    </button>
+                                </div>
+                                <img src={lastOdometerUrl} alt="Full Size Odometer" class="up-full-image" />
+                            </div>
+                        </section>
+                    </template>
+
+                    <!-- Punch Button -->
+                    <div class="up-punch-section">
+                        <button
+                            class={punchBtnClass}
+                            onclick={handlePunch}
+                            disabled={isPunching}>
+                            <template if:true={isPunching}>
+                                <lightning-spinner size="small" alternative-text="Processing..."></lightning-spinner>
+                            </template>
+                            <template if:false={isPunching}>
+                                <lightning-icon
+                                    icon-name={punchBtnIcon}
+                                    size="small"
+                                    class="up-punch-icon">
+                                </lightning-icon>
+                            </template>
+                            <span>{buttonLabel}</span>
+                        </button>
+
+                        <template if:true={isPunching}>
+                            <div class="up-gps-note">
+                                <lightning-icon icon-name="utility:location" size="x-small"></lightning-icon>
+                                Getting your location…
+                            </div>
+                        </template>
+                    </div>
+
+                </template>
+            </div>
+
+            <!-- ═══ Right Column: Timeline ═══ -->
+            <template if:true={isPunchedIn}>
+                <div class="up-panel up-panel-timeline">
+                    <c-punch-timeline record-id={userId}></c-punch-timeline>
+                </div>
+            </template>
+
+        </div>
+
+    </div>
+</template>
