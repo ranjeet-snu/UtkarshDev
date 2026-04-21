@@ -3,6 +3,7 @@ import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import getCurrentStateForUser from '@salesforce/apex/PunchController.getCurrentStateForUser';
 import punchNowAsUser from '@salesforce/apex/PunchController.punchNowAsUser';
 import submitWFHRequest from '@salesforce/apex/PunchController.submitWFHRequest';
+import extractOdometerReading from '@salesforce/apex/OdometerExtractionService.extractOdometerReading';
 
 export default class UserPunch extends LightningElement {
 
@@ -34,6 +35,9 @@ export default class UserPunch extends LightningElement {
     @track videoInitialized = false;
     @track showImageModal = false;
 
+    // AI Extraction State
+    @track isExtractingOdometer = false;
+
     // WFH Request
     @track isWFHApprovedForToday = false;
     @track isWFOApproved = false;
@@ -55,8 +59,6 @@ export default class UserPunch extends LightningElement {
     handleChange(event) {
         this.selectedValue = event.detail.value;
     }
-
-
 
     selfieStream;
     odoStream;
@@ -231,9 +233,6 @@ export default class UserPunch extends LightningElement {
         }
 
         this.isSubmittingReq = true;
-        // const tomorrow = new Date();
-        // tomorrow.setDate(tomorrow.getDate() + 1);
-        // const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
         submitWFHRequest({
             reqDate: this.varReqDate,
@@ -333,17 +332,13 @@ export default class UserPunch extends LightningElement {
         return '';
     }
 
-    // get showWFHRequestForm() {
-    //     return !this.wfhRequestStatusTomorrow || this.wfhRequestStatusTomorrow === 'Not Requested' || this.wfhRequestStatusTomorrow === 'Rejected';
-    // }
+    get lastBatteryDisplay() {
+        return this.lastBattery ? Math.round(this.lastBattery) : null;
+    }
 
     get showWFHRequestForm() {
         return this.wfhRequestStatusTomorrow && this.wfhRequestStatusTomorrow === 'Rejected' && this.punchType !== 'Market Visit';
     }
-
-    // get hasWFHRequestTomorrow() {
-    //     return this.wfhRequestStatusTomorrow && this.wfhRequestStatusTomorrow !== 'Not Requested';
-    // }
 
     get hasWFHRequestTomorrow() {
         return this.wfhRequestStatusTomorrow && (this.wfhRequestStatusTomorrow === 'Pending' || this.wfhRequestStatusTomorrow === 'Approved');
@@ -423,6 +418,10 @@ export default class UserPunch extends LightningElement {
                 }
                 if (!this.odometerPreview) {
                     this.showToast('Action Required', 'Please capture an odometer reading before punching.', 'error');
+                    return;
+                }
+                if (!this.extractedOdometer) {
+                    this.showToast('Action Required', 'Please wait for odometer extraction to complete.', 'error');
                     return;
                 }
             }
@@ -587,7 +586,8 @@ export default class UserPunch extends LightningElement {
         this.odometerPreview = this.processCapture(video, canvas, 'ODOMETER');
         
         if (this.isPrivateVehicle) {
-            this.handleMockExtraction();
+            // Call AI extraction instead of mock
+            this.handleAIExtraction();
         }
     }
 
@@ -615,18 +615,61 @@ export default class UserPunch extends LightningElement {
         return canvas.toDataURL('image/jpeg');
     }
 
-    handleMockExtraction() {
-        // Mock OCR delay
-        setTimeout(() => {
-            this.extractedOdometer = Math.floor(Math.random() * 90000) + 1000;
-            this.showToast('Odometer Extracted', `Successfully extracted reading: ${this.extractedOdometer}`, 'info');
-        }, 1500);
+    /**
+     * NEW METHOD: AI-Powered Odometer Extraction
+     * Calls Anthropic Claude API to extract odometer reading from captured image
+     */
+    handleAIExtraction() {
+        if (!this.odometerPreview) {
+            this.showToast('Error', 'No odometer image captured', 'error');
+            return;
+        }
+
+        this.isExtractingOdometer = true;
+        this.extractedOdometer = '';
+        
+        // Show progress toast
+        this.showToast('Processing', 'Extracting odometer reading using AI...', 'info');
+
+        extractOdometerReading({ base64Image: this.odometerPreview })
+            .then((reading) => {
+                this.isExtractingOdometer = false;
+                
+                if (reading && reading > 0) {
+                    this.extractedOdometer = reading;
+                    this.showToast(
+                        'Success', 
+                        `Odometer reading extracted: ${reading} km`, 
+                        'success'
+                    );
+                } else {
+                    throw new Error('Invalid reading extracted');
+                }
+            })
+            .catch((error) => {
+                console.error('AI Extraction Error:', error);
+                this.isExtractingOdometer = false;
+                
+                const errorMsg = error.body && error.body.message 
+                    ? error.body.message 
+                    : 'Failed to extract odometer reading. Please retake the photo or enter manually.';
+                
+                this.showToast('Extraction Failed', errorMsg, 'warning');
+                
+                // Clear the extracted value on error
+                this.extractedOdometer = '';
+            });
     }
+
+    /**
+     * REMOVED: handleMockExtraction() - replaced by handleAIExtraction()
+     */
 
     retakeSelfie() { this.selfiePreview = ''; }
     retakeOdometer() { 
         this.odometerPreview = ''; 
         this.extractedOdometer = '';
+        this.isExtractingOdometer = false;
     }
 
     // ── Toast ──────────────────────────────────────────────────────────────
